@@ -1,0 +1,154 @@
+<script>
+	//Dans ce modèle la partie incrémentation / décrementation du régulateur n'est pas pris en compte c'est donc pour celà que le commodo ne peut envoyer d'action inc et dec. Ce modèle décrit cependant les cas d'activation / désactivation du régulateur en fonction des différents acteurs
+const model1 = {
+    name: 'tpMaximePitard',
+    objects: [
+        {
+            name: 'commodo',
+            class: 'Commodo',
+            isActor: true,
+            behavior: `
+                [*] --> Idle
+                Idle : [EP_IS_EMPTY(controller)]/controller.stop();
+                Idle : [EP_IS_EMPTY(controller)]/controller.start();
+            `,
+        },
+        {
+            name:'frein',
+            class:'Frein',
+            isActor:true,
+            behavior:`
+                [*] --> Idle
+                Idle : [EP_IS_EMPTY(controller)]/controller.stop();
+            `
+        },
+        {
+            name:'controller',
+            class:'Controller',
+            isActor:false,
+            behavior:`
+            	Off : stop/
+            	Regulating : start/
+            	Regulating : entry/activated();
+                [*] --> Off
+                Off --> Regulating : start[vehicle.speed > 20 || desiredSpeedState.speedState != "undefined"]
+                Regulating --> Off : stop/deactivated();
+            `
+        },
+        {
+            name:'speedCounter',
+            class:'SpeedCounter',
+            isActor:false,
+            behavior:`
+            	[*] --> Off
+            	Off --> On : startCalculate/
+            	On --> Off : stopCalculate/
+                state On{
+	                [*] --> Speed : /desired_speed = vehicle.speed * 1;
+	                Min_value --> Speed : inc/
+	                Speed --> Min_value : dec[desired_speed<=10]/desired_speed = 10;
+	                Speed --> Max_value : inc[desired_speed>=200]/desired_speed = 200;
+	                Max_value --> Speed : dec/
+	                Speed : inc[desired_speed<200]/ desired_speed++;
+	                Speed : dec[desired_speed>10]/ desired_speed--;
+            	}
+            `
+        },
+        {
+            name:'desiredSpeedState',
+            class:'DesiredSpeedState',
+            isActor:false,
+            behavior:`
+            	Undefined : entry/speedState = "undefined";
+            	CurrentSpeed : entry/speedState = "current_speed"; value = vehicle.speed * 1;
+            	DesiredSpeed : entry/speedState = "desired_speed"; value = speedCounter.desired_speed * 1;
+
+                [*] --> Undefined
+                Undefined --> CurrentSpeed : activated/
+                CurrentSpeed --> DesiredSpeed : activated/startCalculate();
+                DesiredSpeed --> CurrentSpeed : deactivated/stopCalculate();
+            `
+        },
+        {
+            name:'vehicle',
+            class:'Vehicle',
+            isActor:false,
+            behavior:`
+            	[*] --> Vroom : /speed = 40;
+            `
+        }
+        
+        
+    ],
+    connectorByName: {
+        c7 : {
+            ends: ["commodo", "controller"],
+            endNames: ["commodo", "controller"]
+        },
+        c2 : {
+            ends: ["frein", "controller"],
+            endNames: ["frein", "controller"]
+        },
+        c3 : {
+            ends: ["acceleration", "controller"],
+            endNames: ["acceleration", "controller"]
+        },
+        c4 : {
+            ends: ["controller", "desiredSpeedState"],
+            endNames: ["controller", "desiredSpeedState"]
+        },
+        c5 : {
+            ends: ["desiredSpeedState", "speedCounter"],
+            endNames: ["desiredSpeedState", "speedCounter"]
+        },
+        c6 : {
+        	ends: ["desiredSpeedState", "vehicle"],
+            endNames: ["desiredSpeedState", "vehicle"]
+        },
+        c1 : {
+        	ends: ["vehicle", "controller"],
+            endNames: ["vehicle", "controller"]
+        },
+        c8 : {
+        	ends: ["vehicle", "speedCounter"],
+            endNames: ["vehicle", "speedCounter"]
+        }
+
+
+
+        
+    },
+    watchExpressions: {
+    	controllerIsRegulating: "IS_IN_STATE(controller,controller.Regulating)", // le controller est dans l'état Regulating
+    	stop: "EP_CONTAINS(controller,stop)", // le controller a reçu un stop()
+    	activated:"EP_CONTAINS(desiredSpeedState,activated)",// desiredSpeedState a reçu un activated()
+    	desiredSpeedUndefined: "IS_IN_STATE(desiredSpeedState,desiredSpeedState.Undefined)",// desiredSpeedState est dans l'état Undefined
+    	desiredSpeedIsCurrent: "IS_IN_STATE(desiredSpeedState,desiredSpeedState.CurrentSpeed)",// desiredSpeedState est dans l'état CurrentSpeed
+    	desiredSpeedIsDesired: "IS_IN_STATE(desiredSpeedState,desiredSpeedState.DesiredSpeed)",// desiredSpeedState est dans l'état DesiredSpeed
+    	vehicleSpeedBelow20: "__ROOT__vehicle.speed <= 20",//la vitesse du véhicule est inférieure ou égale à 20
+    	controllerIsOff:"IS_IN_STATE(controller,Off)" //le controller est dans l'état Off
+    },
+
+
+    LTLProperties: {
+    	startWithoutDesiredSpeed: "	<>activated -> (desiredSpeedUndefined U activated)", //la speed du régulateur est en undefined jusqu'à sa 1ère activation. SCS 1
+    	previousOrCurrentSpeed:"[](activated && desiredSpeedIsCurrent -> [](desiredSpeedIsCurrent | desiredSpeedIsDesired))", //après la 1ère activation du régulateur (passage au state currentSpeed) la vitesse désirée est soit la previous desired speed soit la current speed. SCS 2
+    	noActivationWhenBelow20andUndefined:"[]((vehicleSpeedBelow20 && desiredSpeedUndefined) -> <>(!activated))", //le régulateur ne s'active pas si il n'a pas de vitesse prédéfinie et que la vitesse est en dessous de 20. SCS3
+    	onBrakeRegulatorIsDeactivated:"[](stop && controllerIsRegulating -> <>controllerIsOff)", // après que l'event stop est envoyé par le frein lorsque le régulateur est entrain de réguler, le régulateur se désactive. SCS 16 & SCS 17
+    	all: "startWithoutDesiredSpeed && previousOrCurrentSpeed && noActivationWhenBelow20andUndefined && onBrakeRegulatorIsDeactivated"
+
+    },
+    settings: {
+        semantics: {
+            fireInitialTransitions:true
+        },
+        interface:{
+        	historyType:"sequence"
+        }
+    }
+};
+
+document.write(`
+    <iframe width="100%" height="100%" src='http://172.24.2.1/AnimUML.html#${JSON.stringify(model1).replace(/'/g, "%27")}'></iframe>
+`);
+</script>

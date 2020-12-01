@@ -1,0 +1,78 @@
+<script>
+	//Dans ce modèle on bouchonne l'activation et désactivation du calculateur de vitesse. ainsi on peut vérifier le comportement relatif au calcul de la vitesse désirée
+const model1 = {
+    name: 'speedCounter',
+    objects: [
+        {
+            name: 'commodo',
+            class: 'Commodo',
+            isActor: true,
+            behavior: `
+                [*] --> Idle
+                Idle : /dec();
+                Idle : /inc();
+                Idle : /startCalculate();
+                Idle : /stopCalculate();
+            `,
+        },
+        {
+            name:'speedCounter',
+            class:'SpeedCounter',
+            isActor:false,
+            behavior:`
+            	[*] --> Off : /desired_speed = 10;
+            	Off --> On : startCalculate/
+            	On --> Off : stopCalculate/
+                state On{
+	                [*] --> Speed : /desired_speed = vehicle.speed * 1;
+	                Min_value --> Speed : inc/
+	                Speed --> Min_value : dec[desired_speed<=10]/desired_speed = 10;
+	                Speed --> Max_value : inc[desired_speed>=200]/desired_speed = 200;
+	                Max_value --> Speed : dec/
+	                Speed : inc[desired_speed<200]/ desired_speed++;
+	                Speed : dec[desired_speed>10]/ desired_speed--;
+            	}
+            `
+        },
+        {
+            name:'vehicle',
+            class:'Vehicle',
+            isActor:false,
+            behavior:`
+            	[*] --> Vroom : /speed = 10;
+            `
+        }
+        
+        
+    ],
+    connectorByName: {
+        c7 : {
+            ends: ["commodo", "speedCounter"],
+            endNames: ["commodo", "speedCounter"]
+        },
+        c2 : {
+            ends: ["speedCounter", "vehicle"],
+            endNames: ["speedCounter", "vehicle"]
+        },      
+    },
+    watchExpressions: {
+        desiredSpeedAbove10 : "__ROOT__speedCounter.desired_speed >= 10", // la vitesse désirée est supérieure ou égale à 10 
+        desiredSpeedBelow200 : "__ROOT__speedCounter.desired_speed <= 200" // la vitesse désirée est inférieure ou égale à 200
+    },
+
+
+    LTLProperties: {
+        alwaysbetween10and200 : "[](desiredSpeedAbove10 && desiredSpeedBelow200)", // vérifie que la vitesse désirée est compris entre 10 et 200 en tout point SCS 1 & SCS 6
+        
+    },
+    settings: {
+        semantics: {
+            fireInitialTransitions:true
+        }
+    }
+};
+
+document.write(`
+    <iframe width="100%" height="100%" src='http://172.24.2.1/AnimUML.html#${JSON.stringify(model1).replace(/'/g, "%27")}'></iframe>
+`);
+</script>
